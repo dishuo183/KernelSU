@@ -263,8 +263,8 @@ rm -f /data/adb/post-fs-data.d/post_ota.sh
 
     pub(super) fn dd<P: AsRef<Path>, Q: AsRef<Path>>(ifile: P, ofile: Q) -> Result<()> {
         let status = Command::new("dd")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            // .stdout(Stdio::null())
+            // .stderr(Stdio::null())
             .arg(format!("if={}", ifile.as_ref().display()))
             .arg(format!("of={}", ofile.as_ref().display()))
             .status()?;
@@ -321,8 +321,8 @@ fn parse_kmi_from_boot(magiskboot: &Path, image: &PathBuf, workdir: &Path) -> Re
 
     let status = Command::new(magiskboot)
         .current_dir(workdir)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // .stdout(Stdio::null())
+        // .stderr(Stdio::null())
         .arg("unpack")
         .arg(&image_path)
         .status()
@@ -336,14 +336,18 @@ fn parse_kmi_from_boot(magiskboot: &Path, image: &PathBuf, workdir: &Path) -> Re
 }
 
 fn do_cpio_cmd(magiskboot: &Path, workdir: &Path, cpio_path: &Path, cmd: &str) -> Result<()> {
+    println!("- Executing: magiskboot cpio {} {}", cpio_path.display(), cmd);
     let status = Command::new(magiskboot)
         .current_dir(workdir)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // .stdout(Stdio::null())
+        // .stderr(Stdio::null())
         .arg("cpio")
         .arg(cpio_path)
         .arg(cmd)
         .status()?;
+    if !status.success() {
+        println!("- Command failed with exit code: {:?}", status.code());
+    }
     ensure!(status.success(), "magiskboot cpio {cmd} failed");
     Ok(())
 }
@@ -351,8 +355,8 @@ fn do_cpio_cmd(magiskboot: &Path, workdir: &Path, cpio_path: &Path, cmd: &str) -
 fn is_magisk_patched(magiskboot: &Path, workdir: &Path, cpio_path: &Path) -> Result<bool> {
     let status = Command::new(magiskboot)
         .current_dir(workdir)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // .stdout(Stdio::null())
+        // .stderr(Stdio::null())
         .arg("cpio")
         .arg(cpio_path)
         .arg("test")
@@ -364,8 +368,8 @@ fn is_magisk_patched(magiskboot: &Path, workdir: &Path, cpio_path: &Path) -> Res
 fn is_kernelsu_patched(magiskboot: &Path, workdir: &Path, cpio_path: &Path) -> Result<bool> {
     let status = Command::new(magiskboot)
         .current_dir(workdir)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // .stdout(Stdio::null())
+        // .stderr(Stdio::null())
         .arg("cpio")
         .arg(cpio_path)
         .arg("exists kernelsu.ko")
@@ -654,13 +658,20 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
 
         println!("- Adding KernelSU LKM");
         let is_kernelsu_patched = is_kernelsu_patched(&magiskboot, workdir, ramdisk)?;
+        println!("- KernelSU already patched: {}", is_kernelsu_patched);
 
         if !is_kernelsu_patched {
             // kernelsu.ko is not exist, backup init if necessary
+            println!("- Checking if init exists in ramdisk");
             let status = do_cpio_cmd(&magiskboot, workdir, ramdisk, "exists init");
             if status.is_ok() {
+                println!("- Init exists, backing up as init.real");
                 do_cpio_cmd(&magiskboot, workdir, ramdisk, "mv init init.real")?;
+            } else {
+                println!("- Init does not exist in ramdisk");
             }
+        } else {
+            println!("- Skipping init backup (already patched)");
         }
 
         do_cpio_cmd(&magiskboot, workdir, ramdisk, "add 0755 init init")?;
