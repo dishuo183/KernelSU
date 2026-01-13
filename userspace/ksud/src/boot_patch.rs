@@ -683,10 +683,10 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         // magiskboot repack boot.img
         let status = Command::new(&magiskboot)
             .current_dir(workdir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            // .stdout(Stdio::null())  // 临时注释掉以便调试
+            // .stderr(Stdio::null())  // 临时注释掉以便调试
             .arg("repack")
-            .arg(bootimage)
+            .arg(&bootimage_str)  // 使用处理过的路径
             .status()?;
         ensure!(status.success(), "magiskboot repack failed");
         let new_boot = workdir.join("new-boot.img");
@@ -872,10 +872,10 @@ pub fn restore(args: BootRestoreArgs) -> Result<()> {
         println!("- Repacking boot image");
         let status = Command::new(&magiskboot)
             .current_dir(workdir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            // .stdout(Stdio::null())  // 临时注释掉以便调试
+            // .stderr(Stdio::null())  // 临时注释掉以便调试
             .arg("repack")
-            .arg(&bootimage)
+            .arg(&bootimage_str)  // 使用处理过的路径
             .status()?;
         ensure!(status.success(), "magiskboot repack failed");
         Ok(workdir.join("new-boot.img"))
