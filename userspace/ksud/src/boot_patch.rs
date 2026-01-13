@@ -15,6 +15,9 @@ use which::which;
 
 use crate::assets;
 
+// 控制详细日志输出的全局变量
+const VERBOSE_LOGGING: bool = false;
+
 #[cfg(target_os = "android")]
 mod android {
     use super::{PermissionsExt, Result, do_cpio_cmd};
@@ -321,8 +324,8 @@ fn parse_kmi_from_boot(magiskboot: &Path, image: &PathBuf, workdir: &Path) -> Re
 
     let status = Command::new(magiskboot)
         .current_dir(workdir)
-        // .stdout(Stdio::null())
-        // .stderr(Stdio::null())
+        .stdout(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
         .arg("unpack")
         .arg(&image_path)
         .status()
@@ -336,16 +339,18 @@ fn parse_kmi_from_boot(magiskboot: &Path, image: &PathBuf, workdir: &Path) -> Re
 }
 
 fn do_cpio_cmd(magiskboot: &Path, workdir: &Path, cpio_path: &Path, cmd: &str) -> Result<()> {
-    println!("- Executing: magiskboot cpio {} {}", cpio_path.display(), cmd);
+    if VERBOSE_LOGGING {
+        println!("- Executing: magiskboot cpio {} {}", cpio_path.display(), cmd);
+    }
     let status = Command::new(magiskboot)
         .current_dir(workdir)
-        // .stdout(Stdio::null())
-        // .stderr(Stdio::null())
+        .stdout(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
         .arg("cpio")
         .arg(cpio_path)
         .arg(cmd)
         .status()?;
-    if !status.success() {
+    if !status.success() && VERBOSE_LOGGING {
         println!("- Command failed with exit code: {:?}", status.code());
     }
     ensure!(status.success(), "magiskboot cpio {cmd} failed");
@@ -355,8 +360,8 @@ fn do_cpio_cmd(magiskboot: &Path, workdir: &Path, cpio_path: &Path, cmd: &str) -
 fn is_magisk_patched(magiskboot: &Path, workdir: &Path, cpio_path: &Path) -> Result<bool> {
     let status = Command::new(magiskboot)
         .current_dir(workdir)
-        // .stdout(Stdio::null())
-        // .stderr(Stdio::null())
+        .stdout(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
         .arg("cpio")
         .arg(cpio_path)
         .arg("test")
@@ -368,8 +373,8 @@ fn is_magisk_patched(magiskboot: &Path, workdir: &Path, cpio_path: &Path) -> Res
 fn is_kernelsu_patched(magiskboot: &Path, workdir: &Path, cpio_path: &Path) -> Result<bool> {
     let status = Command::new(magiskboot)
         .current_dir(workdir)
-        // .stdout(Stdio::null())
-        // .stderr(Stdio::null())
+        .stdout(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
         .arg("cpio")
         .arg(cpio_path)
         .arg("exists kernelsu.ko")
@@ -577,16 +582,6 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
             Ok,
         )?;
 
-        #[cfg(target_os = "android")]
-        let (bootimage, bootdevice) =
-            find_boot_image(&image, &kmi, ota, is_replace_kernel, workdir, &partition)?;
-
-        #[cfg(not(target_os = "android"))]
-        let (bootimage, _) =
-            find_boot_image(&image, &kmi, false, is_replace_kernel, workdir, &None)?;
-
-        let bootimage = bootimage.as_path();
-
         // try extract magiskboot/bootctl
         #[cfg(target_os = "android")]
         let _ = assets::ensure_binaries(false);
@@ -596,27 +591,22 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         }
 
         println!("- Preparing assets");
-
-        let kmod_file = workdir.join("kernelsu.ko");
-        if let Some(kmod) = kmod {
-            std::fs::copy(kmod, kmod_file).context("copy kernel module failed")?;
-        } else {
-            // If kmod is not specified, extract from assets
-            println!("- KMI: {kmi}");
-            let name = format!("{kmi}_kernelsu.ko");
-            assets::copy_assets_to_file(&name, kmod_file)
-                .with_context(|| format!("Failed to copy {name}"))?;
+        
+        // 显示使用自定义模块还是内置模块
+        if kmod.is_some() {
+            println!("- Using custom module");
         }
 
-        let init_file = workdir.join("init");
-        if let Some(init) = init {
-            std::fs::copy(init, init_file).context("copy init failed")?;
-        } else {
-            assets::copy_assets_to_file("ksuinit", init_file).context("copy ksuinit failed")?;
-        }
+        // 先处理boot镜像路径
+        #[cfg(target_os = "android")]
+        let (bootimage, bootdevice) =
+            find_boot_image(&image, &kmi, ota, is_replace_kernel, workdir, &partition)?;
 
-        println!("- Unpacking boot image");
-        println!("- Boot image path: {}", bootimage.display());
+        #[cfg(not(target_os = "android"))]
+        let (bootimage, bootdevice) =
+            find_boot_image(&image, &kmi, false, is_replace_kernel, workdir, &None)?;
+
+        let bootimage = bootimage.as_path();
         
         // 处理Windows长路径前缀问题
         let bootimage_str = {
@@ -636,12 +626,45 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
             }
         };
         
-        println!("- Processed path: {}", bootimage_str);
+        println!("- Boot_path: {}", bootimage_str);
+
+        let kmod_file = workdir.join("kernelsu.ko");
+        let module_name = if let Some(ref kmod) = kmod {
+            // 获取自定义ko文件名
+            let filename = kmod.file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            std::fs::copy(kmod, kmod_file).context("copy kernel module failed")?;
+            filename
+        } else {
+            // If kmod is not specified, extract from assets
+            if VERBOSE_LOGGING {
+                println!("- KMI: {kmi}");
+            }
+            let name = format!("{kmi}_kernelsu.ko");
+            assets::copy_assets_to_file(&name, kmod_file)
+                .with_context(|| format!("Failed to copy {name}"))?;
+            name
+        };
+        
+        println!("- Module_name: {}", module_name);
+
+        let init_file = workdir.join("init");
+        if let Some(init) = init {
+            std::fs::copy(init, init_file).context("copy init failed")?;
+        } else {
+            assets::copy_assets_to_file("ksuinit", init_file).context("copy ksuinit failed")?;
+        }
+
+        println!("- Unpacking boot image");
+        if VERBOSE_LOGGING {
+            println!("- Boot image path: {}", bootimage.display());
+        }
         
         let status = Command::new(&magiskboot)
             .current_dir(workdir)
-            // .stdout(Stdio::null())  // 临时注释掉以便调试
-            // .stderr(Stdio::null())  // 临时注释掉以便调试
+            .stdout(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
             .arg("unpack")
             .arg(&bootimage_str)
             .status()?;
@@ -664,19 +687,25 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
 
         println!("- Adding KernelSU LKM");
         let is_kernelsu_patched = is_kernelsu_patched(&magiskboot, workdir, ramdisk)?;
-        println!("- KernelSU already patched: {}", is_kernelsu_patched);
+        if VERBOSE_LOGGING {
+            println!("- KernelSU already patched: {}", is_kernelsu_patched);
+        }
 
         if !is_kernelsu_patched {
             // kernelsu.ko is not exist, backup init if necessary
-            println!("- Checking if init exists in ramdisk");
+            if VERBOSE_LOGGING {
+                println!("- Checking if init exists in ramdisk");
+            }
             let status = do_cpio_cmd(&magiskboot, workdir, ramdisk, "exists init");
             if status.is_ok() {
-                println!("- Init exists, backing up as init.real");
+                if VERBOSE_LOGGING {
+                    println!("- Init exists, backing up as init.real");
+                }
                 do_cpio_cmd(&magiskboot, workdir, ramdisk, "mv init init.real")?;
-            } else {
+            } else if VERBOSE_LOGGING {
                 println!("- Init does not exist in ramdisk");
             }
-        } else {
+        } else if VERBOSE_LOGGING {
             println!("- Skipping init backup (already patched)");
         }
 
@@ -700,8 +729,8 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         // magiskboot repack boot.img
         let status = Command::new(&magiskboot)
             .current_dir(workdir)
-            // .stdout(Stdio::null())  // 临时注释掉以便调试
-            // .stderr(Stdio::null())  // 临时注释掉以便调试
+            .stdout(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
             .arg("repack")
             .arg(&bootimage_str)  // 使用处理过的路径
             .status()?;
@@ -790,7 +819,9 @@ pub fn restore(args: BootRestoreArgs) -> Result<()> {
     let (bootimage, _) = find_boot_image(&image, "", false, false, workdir, &None)?;
 
     println!("- Unpacking boot image");
-    println!("- Boot image path: {}", bootimage.display());
+    if VERBOSE_LOGGING {
+        println!("- Boot image path: {}", bootimage.display());
+    }
     
     // 处理Windows长路径前缀问题
     let bootimage_str = {
@@ -810,12 +841,12 @@ pub fn restore(args: BootRestoreArgs) -> Result<()> {
         }
     };
     
-    println!("- Processed path: {}", bootimage_str);
+    println!("- Boot_path: {}", bootimage_str);
     
     let status = Command::new(&magiskboot)
         .current_dir(workdir)
-        // .stdout(Stdio::null())  // 临时注释掉以便调试
-        // .stderr(Stdio::null())  // 临时注释掉以便调试
+        .stdout(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
         .arg("unpack")
         .arg(&bootimage_str)
         .status()?;
@@ -889,8 +920,8 @@ pub fn restore(args: BootRestoreArgs) -> Result<()> {
         println!("- Repacking boot image");
         let status = Command::new(&magiskboot)
             .current_dir(workdir)
-            // .stdout(Stdio::null())  // 临时注释掉以便调试
-            // .stderr(Stdio::null())  // 临时注释掉以便调试
+            .stdout(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if VERBOSE_LOGGING { Stdio::inherit() } else { Stdio::null() })
             .arg("repack")
             .arg(&bootimage_str)  // 使用处理过的路径
             .status()?;
