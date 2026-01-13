@@ -550,7 +550,6 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
             || -> Result<_> {
                 // 如果指定了自定义模块，跳过KMI检测以提高性能
                 if kmod.is_some() {
-                    println!("- Using custom module, skipping KMI detection");
                     return Ok(String::new());
                 }
                 
@@ -592,11 +591,6 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
 
         println!("- Preparing assets");
         
-        // 显示使用自定义模块还是内置模块
-        if kmod.is_some() {
-            println!("- Using custom module");
-        }
-
         // 先处理boot镜像路径
         #[cfg(target_os = "android")]
         let (bootimage, bootdevice) =
@@ -629,25 +623,20 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         println!("- Boot_path: {}", bootimage_str);
 
         let kmod_file = workdir.join("kernelsu.ko");
-        let module_name = if let Some(ref kmod) = kmod {
-            // 获取自定义ko文件名
+        if let Some(ref kmod) = kmod {
+            // 使用自定义模块
             let filename = kmod.file_name()
                 .map(|f| f.to_string_lossy().to_string())
                 .unwrap_or_else(|| "unknown".to_string());
+            println!("- Module_name: {}", filename);
             std::fs::copy(kmod, kmod_file).context("copy kernel module failed")?;
-            filename
         } else {
-            // If kmod is not specified, extract from assets
-            if VERBOSE_LOGGING {
-                println!("- KMI: {kmi}");
-            }
+            // 使用内置模块
+            println!("- KMI: {}", kmi);
             let name = format!("{kmi}_kernelsu.ko");
             assets::copy_assets_to_file(&name, kmod_file)
                 .with_context(|| format!("Failed to copy {name}"))?;
-            name
         };
-        
-        println!("- Module_name: {}", module_name);
 
         let init_file = workdir.join("init");
         if let Some(init) = init {
@@ -748,8 +737,9 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
             if std::fs::rename(&new_boot, &output_image).is_err() {
                 std::fs::copy(&new_boot, &output_image).context("copy out new boot failed")?;
             }
-            println!("- Output file is written to");
-            println!("- {}", output_image.display().to_string().trim_matches('"'));
+            if let Some(filename) = output_image.file_name() {
+                println!("- Patched_name: {}", filename.to_string_lossy());
+            }
         }
 
         #[cfg(target_os = "android")]
@@ -945,8 +935,9 @@ pub fn restore(args: BootRestoreArgs) -> Result<()> {
         if from_backup || std::fs::rename(&new_boot, &output_image).is_err() {
             std::fs::copy(&new_boot, &output_image).context("copy out new boot failed")?;
         }
-        println!("- Output file is written to");
-        println!("- {}", output_image.display().to_string().trim_matches('"'));
+        if let Some(filename) = output_image.file_name() {
+            println!("- Patched_name: {}", filename.to_string_lossy());
+        }
     }
     #[cfg(target_os = "android")]
     if flash {
