@@ -543,6 +543,12 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
 
         let kmi = kmi.map_or_else(
             || -> Result<_> {
+                // 如果指定了自定义模块，跳过KMI检测以提高性能
+                if kmod.is_some() {
+                    println!("- Using custom module, skipping KMI detection");
+                    return Ok(String::new());
+                }
+                
                 #[cfg(target_os = "android")]
                 match get_current_kmi() {
                     Ok(value) => {
