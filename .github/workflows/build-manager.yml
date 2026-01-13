@@ -20,6 +20,27 @@ on:
       - 'kernel/**'
       - 'userspace/**'
   workflow_call:
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'Build target architecture'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'aarch64-linux-android'
+          - 'x86_64-linux-android'
+      skip_manager:
+        description: 'Skip manager build (only build ksud)'
+        required: false
+        default: false
+        type: boolean
+      debug_build:
+        description: 'Enable debug build'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-lkm:
@@ -45,6 +66,7 @@ jobs:
   
   build-ksud-extra:
     needs: [build-lkm, build-ksuinit]
+    if: ${{ inputs.build_target == 'all' || github.event_name != 'workflow_dispatch' }}
     strategy:
       matrix:
         include:
@@ -65,6 +87,7 @@ jobs:
 
   build-manager:
     needs: build-ksud
+    if: ${{ !inputs.skip_manager || github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     defaults:
       run:
