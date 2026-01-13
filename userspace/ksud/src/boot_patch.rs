@@ -607,13 +607,33 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
 
         println!("- Unpacking boot image");
         println!("- Boot image path: {}", bootimage.display());
-        let bootimage_str = bootimage.to_string_lossy();
+        
+        // 处理Windows长路径前缀问题
+        let bootimage_str = {
+            let path_str = bootimage.to_string_lossy();
+            #[cfg(target_os = "windows")]
+            {
+                // 移除Windows长路径前缀 \\?\
+                if path_str.starts_with(r"\\?\") {
+                    path_str.strip_prefix(r"\\?\").unwrap_or(&path_str).to_string()
+                } else {
+                    path_str.to_string()
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                path_str.to_string()
+            }
+        };
+        
+        println!("- Processed path: {}", bootimage_str);
+        
         let status = Command::new(&magiskboot)
             .current_dir(workdir)
             // .stdout(Stdio::null())  // 临时注释掉以便调试
             // .stderr(Stdio::null())  // 临时注释掉以便调试
             .arg("unpack")
-            .arg(&*bootimage_str)
+            .arg(&bootimage_str)
             .status()?;
         ensure!(status.success(), "magiskboot unpack failed");
 
@@ -754,13 +774,33 @@ pub fn restore(args: BootRestoreArgs) -> Result<()> {
 
     println!("- Unpacking boot image");
     println!("- Boot image path: {}", bootimage.display());
-    let bootimage_str = bootimage.to_string_lossy();
+    
+    // 处理Windows长路径前缀问题
+    let bootimage_str = {
+        let path_str = bootimage.to_string_lossy();
+        #[cfg(target_os = "windows")]
+        {
+            // 移除Windows长路径前缀 \\?\
+            if path_str.starts_with(r"\\?\") {
+                path_str.strip_prefix(r"\\?\").unwrap_or(&path_str).to_string()
+            } else {
+                path_str.to_string()
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            path_str.to_string()
+        }
+    };
+    
+    println!("- Processed path: {}", bootimage_str);
+    
     let status = Command::new(&magiskboot)
         .current_dir(workdir)
         // .stdout(Stdio::null())  // 临时注释掉以便调试
         // .stderr(Stdio::null())  // 临时注释掉以便调试
         .arg("unpack")
-        .arg(&*bootimage_str)
+        .arg(&bootimage_str)
         .status()?;
     ensure!(status.success(), "magiskboot unpack failed");
 
