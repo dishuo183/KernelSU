@@ -606,12 +606,14 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         }
 
         println!("- Unpacking boot image");
+        println!("- Boot image path: {}", bootimage.display());
+        let bootimage_str = bootimage.to_string_lossy();
         let status = Command::new(&magiskboot)
             .current_dir(workdir)
-            // .stdout(Stdio::null())
-            // .stderr(Stdio::null())
+            // .stdout(Stdio::null())  // 临时注释掉以便调试
+            // .stderr(Stdio::null())  // 临时注释掉以便调试
             .arg("unpack")
-            .arg(bootimage)
+            .arg(&*bootimage_str)
             .status()?;
         ensure!(status.success(), "magiskboot unpack failed");
 
@@ -751,12 +753,14 @@ pub fn restore(args: BootRestoreArgs) -> Result<()> {
     let (bootimage, _) = find_boot_image(&image, "", false, false, workdir, &None)?;
 
     println!("- Unpacking boot image");
+    println!("- Boot image path: {}", bootimage.display());
+    let bootimage_str = bootimage.to_string_lossy();
     let status = Command::new(&magiskboot)
         .current_dir(workdir)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // .stdout(Stdio::null())  // 临时注释掉以便调试
+        // .stderr(Stdio::null())  // 临时注释掉以便调试
         .arg("unpack")
-        .arg(bootimage.display().to_string())
+        .arg(&*bootimage_str)
         .status()?;
     ensure!(status.success(), "magiskboot unpack failed");
 
