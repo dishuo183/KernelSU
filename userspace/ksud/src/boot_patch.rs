@@ -608,8 +608,8 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         println!("- Unpacking boot image");
         let status = Command::new(&magiskboot)
             .current_dir(workdir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            // .stdout(Stdio::null())
+            // .stderr(Stdio::null())
             .arg("unpack")
             .arg(bootimage)
             .status()?;
