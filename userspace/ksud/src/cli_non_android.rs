@@ -25,9 +25,6 @@ enum Commands {
         /// apk path
         apk: String,
     },
-
-    /// show supported kmi versions
-    SupportedKmis,
 }
 
 pub fn run() -> Result<()> {
@@ -47,14 +44,6 @@ pub fn run() -> Result<()> {
         Commands::BootPatch(boot_patch) => crate::boot_patch::patch(boot_patch),
 
         Commands::BootRestore(boot_restore) => crate::boot_patch::restore(boot_restore),
-
-        Commands::SupportedKmis => {
-            let kmi = crate::assets::list_supported_kmi();
-            for kmi in &kmi {
-                println!("{kmi}");
-            }
-            Ok(())
-        }
     };
 
     if let Err(e) = &result {
