@@ -13,6 +13,7 @@ use anyhow::ensure;
 use regex_lite::Regex;
 use which::which;
 
+#[cfg(target_os = "android")]
 use crate::assets;
 
 // 控制详细日志输出的全局变量
@@ -383,19 +384,16 @@ fn is_kernelsu_patched(magiskboot: &Path, workdir: &Path, cpio_path: &Path) -> R
     Ok(status.success())
 }
 
-fn find_magiskboot(magiskboot_path: Option<PathBuf>, workdir: &Path) -> Result<PathBuf> {
+fn find_magiskboot(magiskboot_path: Option<PathBuf>, _workdir: &Path) -> Result<PathBuf> {
     let magiskboot = {
         if which("magiskboot").is_ok() {
             "magiskboot".into()
         } else {
-            // magiskboot is not in $PATH, use builtin or specified one
+            // magiskboot is not in $PATH, use specified one
             let magiskboot = if let Some(magiskboot_path) = magiskboot_path {
                 std::fs::canonicalize(magiskboot_path)?
             } else {
-                let magiskboot_path = workdir.join("magiskboot");
-                assets::copy_assets_to_file("magiskboot", &magiskboot_path)
-                    .context("copy magiskboot failed")?;
-                magiskboot_path
+                bail!("magiskboot not found in PATH. Please install magiskboot or use --magiskboot to specify the path");
             };
             ensure!(magiskboot.exists(), "{} is not exist", magiskboot.display());
             #[cfg(unix)]
@@ -408,14 +406,14 @@ fn find_magiskboot(magiskboot_path: Option<PathBuf>, workdir: &Path) -> Result<P
 
 fn find_boot_image(
     image: &Option<PathBuf>,
-    kmi: &str,
-    ota: bool,
-    is_replace_kernel: bool,
-    workdir: &Path,
-    partition: &Option<String>,
+    _kmi: &str,
+    _ota: bool,
+    _is_replace_kernel: bool,
+    _workdir: &Path,
+    _partition: &Option<String>,
 ) -> Result<(PathBuf, Option<String>)> {
     let bootimage;
-    let mut bootdevice = None;
+    let bootdevice = None;
     if let Some(ref image) = *image {
         ensure!(image.exists(), "boot image not found");
         bootimage = std::fs::canonicalize(image)?;
@@ -559,7 +557,7 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
             find_boot_image(&image, &kmi, ota, is_replace_kernel, workdir, &partition)?;
 
         #[cfg(not(target_os = "android"))]
-        let (bootimage, bootdevice) =
+        let (bootimage, _) =
             find_boot_image(&image, &kmi, false, is_replace_kernel, workdir, &None)?;
 
         let bootimage = bootimage.as_path();
