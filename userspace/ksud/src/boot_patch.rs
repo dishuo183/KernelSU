@@ -386,8 +386,6 @@ fn is_kernelsu_patched(magiskboot: &Path, workdir: &Path, cpio_path: &Path) -> R
 fn find_magiskboot(magiskboot_path: Option<PathBuf>, workdir: &Path) -> Result<PathBuf> {
     let magiskboot = {
         if which("magiskboot").is_ok() {
-            #[cfg(target_os = "android")]
-            let _ = assets::ensure_binaries(true);
             "magiskboot".into()
         } else {
             // magiskboot is not in $PATH, use builtin or specified one
@@ -458,12 +456,12 @@ pub struct BootPatchArgs {
     #[arg(short, long)]
     pub kernel: Option<PathBuf>,
 
-    /// LKM module path to replace, if not specified, will use the builtin one
+    /// LKM module path (required), specify the .ko file to use
     #[arg(short, long)]
     pub module: Option<PathBuf>,
 
-    /// init to be replaced
-    #[arg(short, long, requires("module"))]
+    /// init file path (required), specify the ksuinit file to use
+    #[arg(short, long)]
     pub init: Option<PathBuf>,
 
     /// will use another slot when boot image is not specified
@@ -546,44 +544,8 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         // extract magiskboot
         let magiskboot = find_magiskboot(magiskboot_path, workdir)?;
 
-        let kmi = kmi.map_or_else(
-            || -> Result<_> {
-                // 如果指定了自定义模块，跳过KMI检测以提高性能
-                if kmod.is_some() {
-                    return Ok(String::new());
-                }
-                
-                #[cfg(target_os = "android")]
-                match get_current_kmi() {
-                    Ok(value) => {
-                        return Ok(value);
-                    }
-                    Err(e) => {
-                        println!("- {e}");
-                    }
-                }
-                Ok(if let Some(image_path) = &image {
-                    println!(
-                        "- Trying to auto detect KMI version for {}",
-                        image_path.display()
-                    );
-                    parse_kmi_from_boot(&magiskboot, image_path, tmpdir.path())?
-                } else if let Some(kernel_path) = &kernel {
-                    println!(
-                        "- Trying to auto detect KMI version for {}",
-                        kernel_path.display()
-                    );
-                    parse_kmi_from_kernel(kernel_path, tmpdir.path())?
-                } else {
-                    String::new()
-                })
-            },
-            Ok,
-        )?;
-
-        // try extract magiskboot/bootctl
-        #[cfg(target_os = "android")]
-        let _ = assets::ensure_binaries(false);
+        // 不再需要KMI检测，因为不使用内置模块
+        let kmi = kmi.unwrap_or_default();
 
         if let Some(kernel) = kernel {
             std::fs::copy(kernel, workdir.join("kernel")).context("copy kernel from failed")?;
@@ -625,24 +587,23 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         let kmod_file = workdir.join("kernelsu.ko");
         if let Some(ref kmod) = kmod {
             // 使用自定义模块
+            println!("- Using custom module");
             let filename = kmod.file_name()
                 .map(|f| f.to_string_lossy().to_string())
                 .unwrap_or_else(|| "unknown".to_string());
             println!("- Module_name: {}", filename);
             std::fs::copy(kmod, kmod_file).context("copy kernel module failed")?;
         } else {
-            // 使用内置模块
-            println!("- KMI: {}", kmi);
-            let name = format!("{kmi}_kernelsu.ko");
-            assets::copy_assets_to_file(&name, kmod_file)
-                .with_context(|| format!("Failed to copy {name}"))?;
+            // 不再使用内置模块，要求用户必须指定
+            bail!("Kernel module not specified. Please use -m/--module to specify a .ko file");
         };
 
         let init_file = workdir.join("init");
         if let Some(init) = init {
             std::fs::copy(init, init_file).context("copy init failed")?;
         } else {
-            assets::copy_assets_to_file("ksuinit", init_file).context("copy ksuinit failed")?;
+            // 不再使用内置init，要求用户必须指定
+            bail!("Init file not specified. Please use -i/--init to specify ksuinit file");
         }
 
         println!("- Unpacking boot image");
